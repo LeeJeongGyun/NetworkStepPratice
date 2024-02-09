@@ -18,53 +18,102 @@ int main()
     WSAData wsaData;
     ::WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    SOCKET servSock = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (servSock == INVALID_SOCKET)
+    SOCKET listenSock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (listenSock == INVALID_SOCKET)
     {
         HandleError("::socket error");
         return 0;
     }
 
-    // SO_KEEPALIVE : 주기적으로 연결 상태 확인하여 끊어짐 감지(TCP)
-    bool enable = true;
-    ::setsockopt(servSock, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char*>(&enable), sizeof(enable));
-
-    // SO_LINER 
-    // onoff = 1 linger 옵션 활성화, 0 = default
-    // RST 보낼 때 사용
-    // 상대방과 4way handshaking 하지 않겠다. ( onoff = 1, linger = 0 )
-    LINGER linger;
-    linger.l_onoff = 1;
-    linger.l_linger = 0;
-    ::setsockopt(servSock, SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger), sizeof(linger));
-
-    // SO_SNDBUF = 송신 버퍼 크기
-    // SO_RCVBUF = 수신 버퍼 크기
-    int sndBufSize;
-    int optionLen = sizeof(sndBufSize);
-    ::getsockopt(servSock,SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&sndBufSize),&optionLen);
-    std::cout << "송신 버퍼 크기: " << sndBufSize << std::endl;
-
-    int rcvdBufSize;
-    optionLen = sizeof(rcvdBufSize);
-    ::getsockopt(servSock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&rcvdBufSize), &optionLen);
-    std::cout << "수신 버퍼 크기: " << rcvdBufSize << std::endl;
-
-    // SO_REUSEADDR
-    // IP 주소 및 PORT 재사용
-    ::setsockopt(servSock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&enable), sizeof(enable));
-    
-    // IPPROTO_TCP
-    // TCP_NODELAY = Nagle 알고리즘
-    // 장점: 작은 패킷 불필요하게 많이 생성 x
-    // 단점: 반응 시간 손해
+    u_long nonBlockOn = 1;
+    if (INVALID_SOCKET == ::ioctlsocket(listenSock, FIONBIO, &nonBlockOn))
     {
-        bool enable = true;
-        ::setsockopt(servSock, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&enable), sizeof(enable));
+        HandleError("::ioctlsocket error");
+        return 0;
+    }
+
+    SOCKADDR_IN servAdr;
+    ::memset(&servAdr, 0, sizeof(servAdr));
+    servAdr.sin_family = AF_INET;
+    servAdr.sin_addr.s_addr = ::htonl(INADDR_ANY);
+    servAdr.sin_port = ::htons(9999);
+
+    if (SOCKET_ERROR == ::bind(listenSock, reinterpret_cast<const SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN)))
+    {
+        HandleError("::bind Error");
+        return 0;
+    }
+
+    if (SOCKET_ERROR == ::listen(listenSock, SOMAXCONN))
+    {
+        HandleError("::bind Error");
+        return 0;
+    }
+
+    std::cout << "Accept" << std::endl;
+    SOCKET clntSock;
+    SOCKADDR_IN clntAdr;
+    int clntAdrSize = sizeof(clntAdr);
+
+    while (true)
+    {
+        clntSock = ::accept(listenSock, reinterpret_cast<SOCKADDR*>(&clntAdr), &clntAdrSize);
+        if (clntSock == INVALID_SOCKET)
+        {
+            if (::WSAGetLastError() == WSAEWOULDBLOCK)
+            {
+                continue;
+            }
+        }
+
+        std::cout << "Client Connect Success" << std::endl;
+
+        while (true)
+        {
+            char buffer[1000];
+            int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
+            if (recvSize <= 0)
+            {
+                if (::WSAGetLastError() == WSAEWOULDBLOCK)
+                {
+                    continue;
+                }
+                else
+                {
+                    HandleError("::recv error");
+                    return 0;
+                }
+            }
+
+            std::cout << "Recv Size: " << recvSize << std::endl;
+            std::cout << "Recv Data: " << buffer << std::endl;
+            
+            while (true)
+            {
+                int sendSize = ::send(clntSock, buffer, recvSize, 0);
+                if (sendSize <= 0)
+                {
+                    if (::WSAGetLastError() == WSAEWOULDBLOCK)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        HandleError("::send error");
+                        return 0;
+                    }
+                }
+                else
+                {
+                    std::cout << "Send Success!!" << std::endl;
+                    break;
+                }
+            }
+        }
     }
 
 
-    ::closesocket(servSock);
+    ::closesocket(listenSock);
     ::WSACleanup();
     return 0;
 }

@@ -19,10 +19,17 @@ int main()
     WSAData wsaData;
     ::WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    SOCKET clntSock = ::socket(AF_INET, SOCK_DGRAM, 0);
+    SOCKET clntSock = ::socket(AF_INET, SOCK_STREAM, 0);
     if (clntSock == INVALID_SOCKET)
     {
         HandleError("::socket return error");
+        return 0;
+    }
+
+    u_long nonBlockOn = 1;
+    if (INVALID_SOCKET == ::ioctlsocket(clntSock, FIONBIO, &nonBlockOn))
+    {
+        HandleError("::ioctlsocket error");
         return 0;
     }
 
@@ -32,55 +39,61 @@ int main()
     ::InetPtonA(AF_INET, "127.0.0.1", &servAdr.sin_addr);
     servAdr.sin_port = ::htons(9999);
 
-    // Connected UDP
-    // 실제로 연결되는 것은 아님. 소켓에 등록만 한다는 개념
-    if (SOCKET_ERROR == ::connect(clntSock, reinterpret_cast<SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN)))
+    while (true)
     {
-        HandleError("Connected UDP Connect Fail");
-        return 0;
+        if (SOCKET_ERROR == ::connect(clntSock, reinterpret_cast<SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN)))
+        {
+            if (::WSAGetLastError() == WSAEWOULDBLOCK)
+            {
+                continue;
+            }
+
+            // 이미 연결된 상태 break;
+            if (::WSAGetLastError() == WSAEISCONN)
+            {
+                break;
+            }
+
+            HandleError("Connect Fail");
+            return 0;
+        }
     }
-   
+
     char buffer[1000] = "Hello, Server";
     while (true)
     {
-        // 나의 IP 주소 + 포트 번호 설정
-        // Unconnected UDP
-        /*int sendSize = ::sendto(clntSock, buffer, sizeof(buffer), 0, reinterpret_cast<const SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN));
-        if (sendSize <= 0)
-        {
-            HandleError("::sendto return error");
-            return 0;
-        }*/
-
-        // Connected UDP
         int sendSize = ::send(clntSock, buffer, sizeof(buffer), 0);
         if (sendSize <= 0)
         {
-            HandleError("::sendto return error");
+            if (::WSAGetLastError() == WSAEWOULDBLOCK)
+            {
+                continue;
+            }
+
+            HandleError("::send return error");
             return 0;
         }
 
         std::cout << "Send Size " << sendSize << std::endl;
         std::cout << "Send Data: " << buffer << std::endl;
 
-        //SOCKADDR_IN recvAdr;
-        //int recvAdrSize = sizeof(recvAdr);
-        //// Unconnected UDP
-        //int recvSize = ::recvfrom(clntSock, buffer, sizeof(buffer), 0, reinterpret_cast<SOCKADDR*>(&recvAdr), &recvAdrSize);
-        //if (recvSize <= 0)
-        //{
-        //    HandleError("::recvfrom return error");
-        //    return 0;
-        //}
-
-        // Connected UDP
-        int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
-        if (recvSize <= 0)
+        while (true)
         {
-            HandleError("::recvfrom return error");
-            return 0;
-        }
+            int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
+            if (recvSize <= 0)
+            {
+                if (::WSAGetLastError() == WSAEWOULDBLOCK)
+                {
+                    continue;
+                }
 
+                HandleError("::recv return error");
+                return 0;
+            }
+
+            std::cout << "Recv Success!!" << std::endl;
+            break;
+        }
 
         Sleep(1000);
     }
