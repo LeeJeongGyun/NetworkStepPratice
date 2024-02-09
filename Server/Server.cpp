@@ -7,8 +7,9 @@
 
 #pragma comment(lib, "ws2_32")
 
-void HandleError(const char* reason)
+void HandleError(const char* cause)
 {
+    std::cout << cause << std::endl;
     std::cout << ::WSAGetLastError() << std::endl;
 }
 
@@ -17,70 +18,45 @@ int main()
     WSAData wsaData;
     ::WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    SOCKET listenSock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listenSock == INVALID_SOCKET)
+    SOCKET servSock = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (servSock == INVALID_SOCKET)
     {
-        HandleError("::socket return error");
+        HandleError("::socket error");
         return 0;
     }
 
     SOCKADDR_IN sockAdr;
     ::memset(&sockAdr, 0, sizeof(sockAdr));
-    sockAdr.sin_family      = AF_INET;
+    sockAdr.sin_family = AF_INET;
     sockAdr.sin_addr.s_addr = ::htonl(INADDR_ANY);
-    sockAdr.sin_port        = ::htons(9999);
+    sockAdr.sin_port = ::htons(9999);
 
-    if (SOCKET_ERROR == ::bind(listenSock, reinterpret_cast<const SOCKADDR*>(&sockAdr), sizeof(sockAdr)))
+    if (SOCKET_ERROR == ::bind(servSock, reinterpret_cast<const SOCKADDR*>(&sockAdr), sizeof(sockAdr)))
     {
-        HandleError("::bind return error");
-        return 0;
-    }
-
-    if (SOCKET_ERROR == ::listen(listenSock, SOMAXCONN))
-    {
-        HandleError("::listen return error");
+        HandleError("::bind error");
         return 0;
     }
 
     SOCKADDR_IN clntAdr;
     int clntAdrSize = sizeof(clntAdr);
-    
-    std::cout << "Accept Wait" << std::endl;
-    SOCKET clntSock = ::accept(listenSock, reinterpret_cast<SOCKADDR*>(&clntAdr), &clntAdrSize);
-    if (clntSock == INVALID_SOCKET)
-    {
-        HandleError("::accept return error");
-        return 0;
-    }
-
-    char clntIp[16];
-    if (NULL != ::InetNtopA(AF_INET, &clntAdr.sin_addr, clntIp, 32))
-    {
-        std::cout << "Ip: " << clntIp << std::endl;
-        std::cout << "Port: " << ::ntohs(clntAdr.sin_port) << std::endl;
-    }
-
-    char buffer[1024];
     while (true)
     {
-        int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
-        if (recvSize == 0 || recvSize == SOCKET_ERROR)
+        char recvBuffer[1000];
+        int recvSize = ::recvfrom(servSock, recvBuffer, sizeof(recvBuffer), 0, reinterpret_cast<SOCKADDR*>(&clntAdr), &clntAdrSize);
+        if (recvSize <= 0)
         {
-            HandleError("::recv return error");
+            HandleError("recvfrom return <= 0");
             return 0;
         }
 
-        buffer[recvSize] = 0;
-        std::cout << "RecvSize: " << recvSize << std::endl;
-        std::cout << buffer << std::endl;
-        int sendSize = ::send(clntSock, buffer, recvSize, 0);
-        if (sendSize == 0 || sendSize == SOCKET_ERROR)
+        std::cout << "Recv Size: " << recvSize << std::endl;
+        std::cout << "Recv Data: " << recvBuffer << std::endl;
+        int sendSize = ::sendto(servSock, recvBuffer, recvSize, 0, reinterpret_cast<SOCKADDR*>(&clntAdr), sizeof(SOCKADDR_IN));
+        if (sendSize <= 0)
         {
-            HandleError("::send return error");
+            HandleError("sendto return <= 0");
             return 0;
         }
-
-        ::Sleep(1000);
     }
 
     ::WSACleanup();

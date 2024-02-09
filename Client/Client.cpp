@@ -7,9 +7,9 @@
 
 #pragma comment(lib, "ws2_32")
 
-void HandleError(const char* reason)
+void HandleError(const char* cause)
 {
-    std::cout << reason << std::endl;
+    std::cout << cause << std::endl;
     std::cout << ::WSAGetLastError() << std::endl;
 }
 
@@ -19,46 +19,69 @@ int main()
     WSAData wsaData;
     ::WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-    SOCKET clntSock = ::socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET clntSock = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (clntSock == INVALID_SOCKET)
     {
         HandleError("::socket return error");
         return 0;
     }
 
-    SOCKADDR_IN sockAdr;
-    ::memset(&sockAdr, 0, sizeof(sockAdr));
-    sockAdr.sin_family = AF_INET;
-    ::InetPtonA(AF_INET, "127.0.0.1", &sockAdr.sin_addr);
-    sockAdr.sin_port = ::htons(9999);
+    SOCKADDR_IN servAdr;
+    ::memset(&servAdr, 0, sizeof(servAdr));
+    servAdr.sin_family = AF_INET;
+    ::InetPtonA(AF_INET, "127.0.0.1", &servAdr.sin_addr);
+    servAdr.sin_port = ::htons(9999);
 
-    if (SOCKET_ERROR == ::connect(clntSock, reinterpret_cast<const SOCKADDR*>(&sockAdr), sizeof(sockAdr)))
+    // Connected UDP
+    // 실제로 연결되는 것은 아님. 소켓에 등록만 한다는 개념
+    if (SOCKET_ERROR == ::connect(clntSock, reinterpret_cast<SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN)))
     {
-        HandleError("::connect return error");
+        HandleError("Connected UDP Connect Fail");
         return 0;
     }
-
-    std::cout << "Connect Success" << std::endl;
-
+   
     char buffer[1000] = "Hello, Server";
     while (true)
     {
+        // 나의 IP 주소 + 포트 번호 설정
+        // Unconnected UDP
+        /*int sendSize = ::sendto(clntSock, buffer, sizeof(buffer), 0, reinterpret_cast<const SOCKADDR*>(&servAdr), sizeof(SOCKADDR_IN));
+        if (sendSize <= 0)
+        {
+            HandleError("::sendto return error");
+            return 0;
+        }*/
+
+        // Connected UDP
         int sendSize = ::send(clntSock, buffer, sizeof(buffer), 0);
-        if (sendSize == 0 || sendSize == SOCKET_ERROR)
+        if (sendSize <= 0)
         {
-            HandleError("::send return error");
+            HandleError("::sendto return error");
             return 0;
         }
 
+        std::cout << "Send Size " << sendSize << std::endl;
+        std::cout << "Send Data: " << buffer << std::endl;
+
+        //SOCKADDR_IN recvAdr;
+        //int recvAdrSize = sizeof(recvAdr);
+        //// Unconnected UDP
+        //int recvSize = ::recvfrom(clntSock, buffer, sizeof(buffer), 0, reinterpret_cast<SOCKADDR*>(&recvAdr), &recvAdrSize);
+        //if (recvSize <= 0)
+        //{
+        //    HandleError("::recvfrom return error");
+        //    return 0;
+        //}
+
+        // Connected UDP
         int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
-        if (recvSize == 0 || recvSize == SOCKET_ERROR)
+        if (recvSize <= 0)
         {
-            HandleError("::recv return error");
+            HandleError("::recvfrom return error");
             return 0;
         }
 
-        std::cout << "RecvSize: " << recvSize << std::endl;
-        std::cout << buffer << std::endl;
+
         Sleep(1000);
     }
    
