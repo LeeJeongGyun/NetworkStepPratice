@@ -62,38 +62,34 @@ int main()
     char buffer[1000] = "Hello, Server";
     while (true)
     {
-        int sendSize = ::send(clntSock, buffer, sizeof(buffer), 0);
-        if (sendSize <= 0)
+        WSABUF buf;
+        buf.buf = buffer;
+        buf.len = 1000;
+
+        WSAEVENT hEvent = ::WSACreateEvent();
+        WSAOVERLAPPED overlapped;
+        ::memset(&overlapped, 0, sizeof(overlapped));
+        overlapped.hEvent = hEvent;
+
+        DWORD sendSize;
+        DWORD flags = 0;
+        if (SOCKET_ERROR == ::WSASend(clntSock, &buf, 1, &sendSize, flags, &overlapped, NULL))
         {
-            if (::WSAGetLastError() == WSAEWOULDBLOCK)
+            if (::WSAGetLastError() != WSA_IO_PENDING)
             {
-                continue;
+                ::closesocket(clntSock);
+                ::WSACloseEvent(hEvent);
+
+                HandleError("::WSASend error");
+                return 0; // ERROR
             }
 
-            HandleError("::send return error");
-            return 0;
+            ::WSAWaitForMultipleEvents(1, &hEvent, TRUE, WSA_INFINITE, FALSE);
+            ::WSAGetOverlappedResult(clntSock, &overlapped, &sendSize, TRUE, &flags);
         }
 
-        std::cout << "Send Size " << sendSize << std::endl;
+        std::cout << "Send Size: " << sendSize << std::endl;
         std::cout << "Send Data: " << buffer << std::endl;
-
-        while (true)
-        {
-            int recvSize = ::recv(clntSock, buffer, sizeof(buffer), 0);
-            if (recvSize <= 0)
-            {
-                if (::WSAGetLastError() == WSAEWOULDBLOCK)
-                {
-                    continue;
-                }
-
-                HandleError("::recv return error");
-                return 0;
-            }
-
-            std::cout << "Recv Success!!" << std::endl;
-            break;
-        }
 
         Sleep(1000);
     }
