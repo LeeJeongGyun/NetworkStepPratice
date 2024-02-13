@@ -22,5 +22,8 @@
     <ClInclude Include="IOCompletionPort.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Define.h">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

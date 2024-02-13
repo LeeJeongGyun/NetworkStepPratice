@@ -1,4 +1,9 @@
 #include "IOCompletionPort.h"
+#include<WinSock2.h>
+#include<MSWSock.h>
+#include <WS2tcpip.h>
+#include <Windows.h>
+#include <vector>
 #include<iostream>
 
 IOCompletionPort::IOCompletionPort()
@@ -158,8 +163,9 @@ void IOCompletionPort::AccepterThread()
 
         if (false == BindRecv(pClientInfo))
         {
-            // TODO 수정 필요.
-            return;
+            // 연결 끊기.
+            CloseSocket(pClientInfo);
+            continue;
         }
 
         char clientIp[16] = {};
@@ -174,19 +180,19 @@ void IOCompletionPort::WorkerThread()
 {
     DWORD bytes;
     ClientInfo* pClientInfo;
-    LPOVERLAPPED lpOverlapped = NULL;
+    OverlappedEx* pOverlappedEx = nullptr;
     BOOL bSuccess;
 
     while (_isWorkerThreadRun)
     {
-        bSuccess = ::GetQueuedCompletionStatus(_iocpHandle, &bytes, reinterpret_cast<PULONG_PTR>(&pClientInfo), &lpOverlapped, INFINITE);
-        if (bSuccess == TRUE && bytes == 0 && lpOverlapped == NULL)
+        bSuccess = ::GetQueuedCompletionStatus(_iocpHandle, &bytes, reinterpret_cast<PULONG_PTR>(&pClientInfo), reinterpret_cast<LPOVERLAPPED*>(&pOverlappedEx), INFINITE);
+        if (bSuccess == TRUE && bytes == 0 && pOverlappedEx == NULL)
         {
             _isWorkerThreadRun = false;
             continue;
         }
 
-        if (lpOverlapped == NULL)
+        if (pOverlappedEx == NULL)
         {
             continue;
         }
@@ -199,20 +205,19 @@ void IOCompletionPort::WorkerThread()
             continue;
         }
 
-        OverlappedEx* pOverlappedEx = reinterpret_cast<OverlappedEx*>(lpOverlapped);
         if (pOverlappedEx->type == IOOperation::RECV)
         {
-            pOverlappedEx->buffer[bytes] = NULL;
-            std::cout << "Recv Bytes: " << bytes << ", Msg: " << pOverlappedEx->buffer << std::endl;
+            pClientInfo->recvBuffer[bytes] = NULL;
+            std::cout << "Recv Bytes: " << bytes << ", Msg: " << pClientInfo->recvBuffer << std::endl;
 
             // 클라이언트 Echo
-            SendMsg(pClientInfo, pOverlappedEx->buffer, bytes);
+            SendMsg(pClientInfo, bytes);
             BindRecv(pClientInfo);
         }
         else if (pOverlappedEx->type == IOOperation::SEND)
         {
-            pOverlappedEx->buffer[bytes] = NULL;
-            std::cout << "Send Bytes: " << bytes << ", Msg: " << pOverlappedEx->buffer << std::endl;
+            pClientInfo->sendBuffer[bytes] = NULL;
+            std::cout << "Send Bytes: " << bytes << ", Msg: " << pClientInfo->sendBuffer << std::endl;
         }
         else
         {
@@ -237,9 +242,9 @@ bool IOCompletionPort::BindRecv(ClientInfo* pClientInfo)
 {
     DWORD bytes = 0;
     DWORD flag = 0;
-    WSABUF& wsaBuf = pClientInfo->RecvOverlappedEx.wsaBuf;
-    wsaBuf.buf = pClientInfo->RecvOverlappedEx.buffer;
-    wsaBuf.len = MAX_SOCKBUF_SIZE;
+    WSABUF wsaBuf;
+    wsaBuf.buf = pClientInfo->recvBuffer;
+    wsaBuf.len = MAX_SOCKBUF_SIZE;    
     pClientInfo->RecvOverlappedEx.type = IOOperation::RECV;
 
     int ret = ::WSARecv(pClientInfo->clntSock, &wsaBuf, 1, &bytes, &flag, reinterpret_cast<LPWSAOVERLAPPED>(&pClientInfo->RecvOverlappedEx), NULL);
@@ -251,22 +256,23 @@ bool IOCompletionPort::BindRecv(ClientInfo* pClientInfo)
     return true;
 }
 
-bool IOCompletionPort::SendMsg(ClientInfo* pClientInfo, const char * pMsg, DWORD sendByte)
+bool IOCompletionPort::SendMsg(ClientInfo* pClientInfo, DWORD sendByte)
 {
+    CopyMemory(pClientInfo->sendBuffer, pClientInfo->recvBuffer, sendByte);
+
     DWORD bytes = 0;
-    CopyMemory(pClientInfo->SendOverlappedEx.buffer, pClientInfo->RecvOverlappedEx.buffer, sendByte);
-
-    WSABUF& wsaBuf = pClientInfo->SendOverlappedEx.wsaBuf;
-    wsaBuf.buf = pClientInfo->SendOverlappedEx.buffer;
+    WSABUF wsaBuf;
+    wsaBuf.buf = pClientInfo->sendBuffer;
     wsaBuf.len = sendByte;
-    pClientInfo->SendOverlappedEx.type = IOOperation::SEND;
 
+    pClientInfo->SendOverlappedEx.type = IOOperation::SEND;
 
     // Error면 끊어진 것으로 처리
     int ret = ::WSASend(pClientInfo->clntSock, &wsaBuf, 1, &bytes, 0, reinterpret_cast<LPWSAOVERLAPPED>(&pClientInfo->SendOverlappedEx), NULL);
     if (ret == SOCKET_ERROR && (::WSAGetLastError() != WSA_IO_PENDING))
     {
         HandleError("SendMsg - ::WSASend Error");
+        CloseSocket(pClientInfo);
         return false;
     }
     
@@ -293,7 +299,6 @@ void IOCompletionPort::DestroyThread()
     {
         _accepterThread.join();
     }
-
 }
 
 void IOCompletionPort::CloseSocket(ClientInfo* pClientInfo, bool isForce)

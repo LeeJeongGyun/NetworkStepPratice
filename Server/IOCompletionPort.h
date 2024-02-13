@@ -1,39 +1,10 @@
 #pragma once
 
-#include<WinSock2.h>
-#include<MSWSock.h>
-#include <WS2tcpip.h>
-#include <Windows.h>
-#include <vector>
-#include <thread>
+#include "Define.h"
+#include<iostream>
+#include<vector>
+#include<thread>
 #pragma comment(lib, "ws2_32")
-
-#define MAX_SOCKBUF_SIZE		1024	// 패킷 크리
-#define	MAX_WORKER_THREAD_CNT	4		// 쓰레드 풀에 넣을 쓰레드 수
-
-enum class IOOperation
-{
-	RECV,
-	SEND
-};
-
-// WSAOVERLAPPED 구조체 확장
-struct OverlappedEx
-{
-	WSAOVERLAPPED	wsaOverlapped;
-	SOCKET			clntSock;
-	WSABUF			wsaBuf;
-	char			buffer[MAX_SOCKBUF_SIZE];
-	IOOperation		type;
-};
-
-// 클라이언트 정보
-struct ClientInfo
-{
-	SOCKET			clntSock = INVALID_SOCKET;
-	OverlappedEx	RecvOverlappedEx = {};
-	OverlappedEx	SendOverlappedEx = {};
-};
 
 class IOCompletionPort
 {
@@ -81,7 +52,7 @@ private:
 
 	bool BindRecv(ClientInfo* pClientInfo);
 
-	bool SendMsg(ClientInfo* pClientInfo, const char* pMsg, DWORD sendByte);
+	bool SendMsg(ClientInfo* pClientInfo, DWORD sendByte);
 
 	// 소켓 연결 종료
 	void CloseSocket(ClientInfo* pClientInfo, bool isForce = false);
