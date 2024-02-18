@@ -22,10 +22,11 @@ struct OverlappedEx
 // 클라이언트 정보
 struct ClientInfo
 {
-	SOCKET			clntSock = INVALID_SOCKET;
-	char			recvBuffer[MAX_SOCKBUF_SIZE];
-	char			sendBuffer[MAX_SOCKBUF_SIZE];
+	SOCKET				clntSock = INVALID_SOCKET;
+	unsigned __int64	sessionId;
+	char				recvBuffer[MAX_SOCKBUF_SIZE];
+	char				sendBuffer[MAX_SOCKBUF_SIZE];
 
-	OverlappedEx	RecvOverlappedEx = {};
-	OverlappedEx	SendOverlappedEx = {};
+	OverlappedEx		RecvOverlappedEx = {};
+	OverlappedEx		SendOverlappedEx = {};
 };

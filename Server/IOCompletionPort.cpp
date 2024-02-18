@@ -15,6 +15,16 @@ IOCompletionPort::~IOCompletionPort()
     ::WSACleanup();
 }
 
+void IOCompletionPort::SendData(const unsigned __int64 contentsId, char* pBuffer, int recvBytes)
+{
+    auto findIt = _umSessionToContents.find(contentsId);
+    if (findIt != _umSessionToContents.end())
+    {
+        ClientInfo* pClientInfo = findIt->second;
+        SendMsg(pClientInfo, recvBytes);
+    }
+}
+
 void IOCompletionPort::HandleError(const char* cause)
 {
     std::cout << cause << std::endl;
@@ -161,6 +171,14 @@ void IOCompletionPort::AccepterThread()
             return;
         }
 
+        // 멀티스레드 고려 필요
+        // BindRecv 보다 먼저 세팅해야된다. BindRecv 후에 세팅하면 WorkerThread에서 오동작
+        static unsigned __int64 contentsId = 0;
+        ++contentsId;
+        pClientInfo->sessionId = contentsId;
+        _umSessionToContents.insert({ contentsId, pClientInfo });
+        _umContentsToSession.insert({ pClientInfo, contentsId });
+
         if (false == BindRecv(pClientInfo))
         {
             // 연결 끊기.
@@ -171,6 +189,10 @@ void IOCompletionPort::AccepterThread()
         char clientIp[16] = {};
         ::InetNtopA(AF_INET, &clntAdr.sin_addr, reinterpret_cast<PSTR>(clientIp), 16);
         std::cout << clientIp << std::endl;
+
+        
+        // 컨텐츠로 연결 정보 넘김.
+        OnAccept();
 
         _clientCount++;
     }
@@ -210,14 +232,19 @@ void IOCompletionPort::WorkerThread()
             pClientInfo->recvBuffer[bytes] = NULL;
             std::cout << "Recv Bytes: " << bytes << ", Msg: " << pClientInfo->recvBuffer << std::endl;
 
-            // 클라이언트 Echo
-            SendMsg(pClientInfo, bytes);
-            BindRecv(pClientInfo);
+            auto findIt = _umContentsToSession.find(pClientInfo);
+            if (findIt != _umContentsToSession.end())
+            {
+                OnRecv(findIt->second, pClientInfo->recvBuffer, bytes);
+                BindRecv(pClientInfo);
+            }
         }
         else if (pOverlappedEx->type == IOOperation::SEND)
         {
             pClientInfo->sendBuffer[bytes] = NULL;
             std::cout << "Send Bytes: " << bytes << ", Msg: " << pClientInfo->sendBuffer << std::endl;
+
+            OnSend(pClientInfo->sendBuffer, bytes);
         }
         else
         {
@@ -303,6 +330,16 @@ void IOCompletionPort::DestroyThread()
 
 void IOCompletionPort::CloseSocket(ClientInfo* pClientInfo, bool isForce)
 {
-    ::closesocket(pClientInfo->clntSock);
-    pClientInfo->clntSock = INVALID_SOCKET;
+    if (pClientInfo->clntSock != INVALID_SOCKET)
+    {
+        OnDisconnect();
+
+        _umSessionToContents.erase(pClientInfo->sessionId);
+        _umContentsToSession.erase(pClientInfo);
+        pClientInfo->sessionId = 0;
+
+        ::closesocket(pClientInfo->clntSock);
+        pClientInfo->clntSock = INVALID_SOCKET;
+
+    }
 }

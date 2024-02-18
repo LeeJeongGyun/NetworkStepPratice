@@ -4,6 +4,7 @@
 #include<iostream>
 #include<vector>
 #include<thread>
+#include<unordered_map>
 #pragma comment(lib, "ws2_32")
 
 class IOCompletionPort
@@ -12,6 +13,15 @@ public:
 	IOCompletionPort();
 	~IOCompletionPort();
 
+protected:
+	virtual void OnAccept() {}
+	virtual void OnRecv(const unsigned __int64 contentsId, char * pBuffer, int recvBytes) {}
+	virtual void OnSend(char* pBuffer, int sendBytes) {}
+	virtual void OnDisconnect() {}
+
+	void SendData(const unsigned __int64 contentsId, char* pBuffer, int recvBytes);
+
+public:
 	// 나중에 적당한 곳으로 빼자.
 	void HandleError(const char* cause);
 
@@ -67,5 +77,9 @@ private:
 	std::thread					_accepterThread;
 	std::vector<std::thread>	_vWorkerThread;
 	std::vector<ClientInfo>		_vClientInfo;
+
+	// network library와 contendts를 연결해주는 컨테이너.
+	std::unordered_map<unsigned __int64, ClientInfo*> _umSessionToContents;
+	std::unordered_map<ClientInfo*, unsigned __int64> _umContentsToSession;
 };
 

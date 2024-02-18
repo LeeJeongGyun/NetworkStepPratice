@@ -17,12 +17,18 @@
     <ClCompile Include="IOCompletionPort.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Contents.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="IOCompletionPort.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
     <ClInclude Include="Define.h">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Contents.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
   </ItemGroup>
